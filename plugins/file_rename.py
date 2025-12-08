@@ -57,27 +57,50 @@ QUALITY_PATTERNS = [
     (re.compile(r'\[?(4k|2k|1080p|720p|480p)?\s*[xX](264|265)\]?', re.IGNORECASE), lambda m: m.group(0).upper()),
 ]
 
-def extract_season_episode(filename):
-    """Extract season and episode numbers from filename"""
+def extract_season_episode(caption, filename):
+    """Extract season and episode numbers from caption first, then filename"""
+    # Try caption first if available
+    if caption:
+        for pattern, (season_group, episode_group) in SEASON_EPISODE_PATTERNS:
+            match = pattern.search(caption)
+            if match:
+                season = match.group(1) if season_group else None
+                episode = match.group(2) if episode_group else match.group(1)
+                logger.info(f"Extracted season: {season}, episode: {episode} from caption")
+                return season, episode
+    
+    # Fallback to filename
     for pattern, (season_group, episode_group) in SEASON_EPISODE_PATTERNS:
         match = pattern.search(filename)
         if match:
             season = match.group(1) if season_group else None
             episode = match.group(2) if episode_group else match.group(1)
-            logger.info(f"Extracted season: {season}, episode: {episode} from {filename}")
+            logger.info(f"Extracted season: {season}, episode: {episode} from filename")
             return season, episode
-    logger.warning(f"No season/episode pattern matched for {filename}")
+    
+    logger.warning(f"No season/episode pattern matched for caption or filename")
     return None, None
 
-def extract_quality(filename):
-    """Extract quality information from filename"""
+def extract_quality(caption, filename):
+    """Extract quality information from caption first, then filename"""
+    # Try caption first if available
+    if caption:
+        for pattern, extractor in QUALITY_PATTERNS:
+            match = pattern.search(caption)
+            if match:
+                quality = extractor(match)
+                logger.info(f"Extracted quality: {quality} from caption")
+                return quality
+    
+    # Fallback to filename
     for pattern, extractor in QUALITY_PATTERNS:
         match = pattern.search(filename)
         if match:
             quality = extractor(match)
-            logger.info(f"Extracted quality: {quality} from {filename}")
+            logger.info(f"Extracted quality: {quality} from filename")
             return quality
-    logger.warning(f"No quality pattern matched for {filename}")
+    
+    logger.warning(f"No quality pattern matched for caption or filename")
     return "Unknown"
 
 async def cleanup_files(*paths):
@@ -183,9 +206,11 @@ async def auto_rename_files(client, message):
     renaming_operations[file_id] = datetime.now()
 
     try:
-        # Extract metadata from filename
-        season, episode = extract_season_episode(file_name)
-        quality = extract_quality(file_name)
+        caption = message.caption if message.caption else None
+        
+        # Extract metadata from caption first, then filename
+        season, episode = extract_season_episode(caption, file_name)
+        quality = extract_quality(caption, file_name)
         
         # Replace placeholders in template
         replacements = {
