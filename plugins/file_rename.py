@@ -45,20 +45,13 @@ SEASON_EPISODE_PATTERNS = [
 
 # Quality detection patterns
 QUALITY_PATTERNS = [
-    # FIRST detect brackets → [480p], [720p], [1080p]
-    (re.compile(r'\[(\d{3,4}[pi])\]', re.IGNORECASE), lambda m: m.group(1)),
-
-    # THEN normal → 480p, 720p, 1080p
-    (re.compile(r'\b(\d{3,4}[pi])\b', re.IGNORECASE), lambda m: m.group(1)),
-
-    # 4K patterns
+    (re.compile(r'\b(\d{3,4}[pi])\b', re.IGNORECASE), lambda m: m.group(1)),  # 1080p, 720p
     (re.compile(r'\b(4k|2160p)\b', re.IGNORECASE), lambda m: "4k"),
-
-    # 2K patterns
     (re.compile(r'\b(2k|1440p)\b', re.IGNORECASE), lambda m: "2k"),
-
-    # HDR / HDTV
     (re.compile(r'\b(HDRip|HDTV)\b', re.IGNORECASE), lambda m: m.group(1)),
+    (re.compile(r'\b(4kX264|4kx265)\b', re.IGNORECASE), lambda m: m.group(1)),
+    (re.compile(r'\[(\d{3,4}[pi])\]', re.IGNORECASE), lambda m: m.group(1)),  # [1080p]
+    (re.compile(r'\[(\d{3,4}[pi])\]', re.IGNORECASE), lambda m: m.group(1))
 ]
 
 
