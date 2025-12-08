@@ -45,14 +45,12 @@ SEASON_EPISODE_PATTERNS = [
 
 # Quality detection patterns
 QUALITY_PATTERNS = [
-    (re.compile(r'\b(\d{3,4}[pi])\b', re.IGNORECASE), lambda m: m.group(1)),
+    (re.compile(r'\b(\d{3,4}[pi])\b', re.IGNORECASE), lambda m: m.group(1)),  # 1080p, 720p
     (re.compile(r'\b(4k|2160p)\b', re.IGNORECASE), lambda m: "4k"),
     (re.compile(r'\b(2k|1440p)\b', re.IGNORECASE), lambda m: "2k"),
     (re.compile(r'\b(HDRip|HDTV)\b', re.IGNORECASE), lambda m: m.group(1)),
     (re.compile(r'\b(4kX264|4kx265)\b', re.IGNORECASE), lambda m: m.group(1)),
-
-    # 🔥 Bracket quality pattern at the end
-    (re.compile(r'\[(\d{3,4}[pi])\]', re.IGNORECASE), lambda m: m.group(1))
+    (re.compile(r'\[(\d{3,4}[pi])\]', re.IGNORECASE), lambda m: m.group(1))  # [1080p]
 ]
 
 def extract_season_episode(filename):
@@ -94,7 +92,7 @@ async def process_thumbnail(thumb_path):
     
     try:
         with Image.open(thumb_path) as img:
-            img = img.convert("RGB").resize((1280, 720))
+            img = img.convert("RGB").resize((320, 320))
             img.save(thumb_path, "JPEG")
         return thumb_path
     except Exception as e:
