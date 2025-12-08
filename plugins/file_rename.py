@@ -119,7 +119,7 @@ async def process_thumbnail(thumb_path):
     
     try:
         with Image.open(thumb_path) as img:
-            img = img.convert("RGB").resize((320, 320))
+            img = img.convert("RGB").resize((1280, 720))
             img.save(thumb_path, "JPEG")
         return thumb_path
     except Exception as e:
