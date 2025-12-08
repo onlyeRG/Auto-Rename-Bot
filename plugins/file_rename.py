@@ -28,29 +28,33 @@ renaming_operations = {}
 
 # Enhanced regex patterns for season and episode extraction
 SEASON_EPISODE_PATTERNS = [
-    # Standard patterns (S01E02, S01EP02)
-    (re.compile(r'S(\d+)(?:E|EP)(\d+)'), ('season', 'episode')),
-    # Patterns with spaces/dashes (S01 E02, S01-EP02)
-    (re.compile(r'S(\d+)[\s-]*(?:E|EP)(\d+)'), ('season', 'episode')),
-    # Full text patterns (Season 1 Episode 2)
+    # Standard patterns (S01E02, S01EP02, S01E02, S01 E02, S01 EP02) - PRIORITY
+    (re.compile(r'S(\d+)\s*(?:E|EP)\s*(\d+)', re.IGNORECASE), ('season', 'episode')),
+    # Patterns with dashes (S01-E02, S01-EP02)
+    (re.compile(r'S(\d+)[-_](?:E|EP)(\d+)', re.IGNORECASE), ('season', 'episode')),
+    # Full text patterns (Season 1 Episode 2, Season 01 Episode 02)
     (re.compile(r'Season\s*(\d+)\s*Episode\s*(\d+)', re.IGNORECASE), ('season', 'episode')),
-    # Patterns with brackets/parentheses ([S01][E02])
-    (re.compile(r'\[S(\d+)\]\[E(\d+)\]'), ('season', 'episode')),
-    # Fallback patterns (S01 13, Episode 13)
-    (re.compile(r'S(\d+)[^\d]*(\d+)'), ('season', 'episode')),
+    # Patterns with brackets/parentheses ([S01][E02], [S01E02])
+    (re.compile(r'\[S(\d+)\s*(?:E|EP)?\s*(\d+)\]', re.IGNORECASE), ('season', 'episode')),
+    (re.compile(r'\[S(\d+)\]\[E(\d+)\]', re.IGNORECASE), ('season', 'episode')),
+    # Fallback patterns (S01 13 - season followed by number)
+    (re.compile(r'S(\d+)[^\d]*(\d+)', re.IGNORECASE), ('season', 'episode')),
+    # Episode only patterns (EP02, E02, Episode 02)
     (re.compile(r'(?:E|EP|Episode)\s*(\d+)', re.IGNORECASE), (None, 'episode')),
-    # Final fallback (standalone number)
-    (re.compile(r'\b(\d+)\b'), (None, 'episode'))
 ]
 
-# Quality detection patterns
 QUALITY_PATTERNS = [
-    (re.compile(r'\b(\d{3,4}[pi])\b', re.IGNORECASE), lambda m: m.group(1)),  # 1080p, 720p
-    (re.compile(r'\b(4k|2160p)\b', re.IGNORECASE), lambda m: "4k"),
-    (re.compile(r'\b(2k|1440p)\b', re.IGNORECASE), lambda m: "2k"),
-    (re.compile(r'\b(HDRip|HDTV)\b', re.IGNORECASE), lambda m: m.group(1)),
-    (re.compile(r'\b(4kX264|4kx265)\b', re.IGNORECASE), lambda m: m.group(1)),
-    (re.compile(r'\[(\d{3,4}[pi])\]', re.IGNORECASE), lambda m: m.group(1))  # [1080p]
+    # Bracketed quality formats (PRIORITY) - [480p], [720p], [1080p], [2160p]
+    (re.compile(r'\[(\d{3,4}[pi])\]', re.IGNORECASE), lambda m: m.group(1).upper()),
+    # Standard quality formats - 1080p, 720p, 480p, 2160p
+    (re.compile(r'\b(\d{3,4}[pi])\b', re.IGNORECASE), lambda m: m.group(1).upper()),
+    # 4K and 2K variants - [4K], 4K, [2160p], 2160p
+    (re.compile(r'\[?(4k|2160p|uhd)\]?', re.IGNORECASE), lambda m: "4K"),
+    (re.compile(r'\[?(2k|1440p|qhd)\]?', re.IGNORECASE), lambda m: "2K"),
+    # HDRip, HDTV, WebRip variants - [HDRip], HDRip
+    (re.compile(r'\[?(HDRip|HDTV|WebRip|WEBRip|BluRay|BRRip)\]?', re.IGNORECASE), lambda m: m.group(1).upper()),
+    # x264/x265 variants with quality
+    (re.compile(r'\[?(4k|2k|1080p|720p|480p)?\s*[xX](264|265)\]?', re.IGNORECASE), lambda m: m.group(0).upper()),
 ]
 
 def extract_season_episode(filename):
@@ -92,7 +96,7 @@ async def process_thumbnail(thumb_path):
     
     try:
         with Image.open(thumb_path) as img:
-            img = img.convert("RGB").resize((1280, 720))
+            img = img.convert("RGB").resize((320, 320))
             img.save(thumb_path, "JPEG")
         return thumb_path
     except Exception as e:
