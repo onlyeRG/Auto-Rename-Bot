@@ -118,13 +118,54 @@ async def process_thumbnail(thumb_path):
     
     try:
         with Image.open(thumb_path) as img:
-            img = img.convert("RGB").resize((2560, 1440))
+            img = img.convert("RGB").resize((320, 320))
             img.save(thumb_path, "JPEG")
         return thumb_path
     except Exception as e:
         logger.error(f"Thumbnail processing failed: {e}")
         await cleanup_files(thumb_path)
         return None
+
+def get_reliable_duration(message, file_size):
+    """
+    Get reliable duration from Telegram metadata.
+    Returns None if duration is unreliable (< 60 seconds) or missing.
+    Uses file_size as primary indicator for actual content length.
+    
+    Args:
+        message: Telegram message object
+        file_size: File size in bytes
+        
+    Returns:
+        Reliable duration in seconds or None
+    """
+    duration = None
+    
+    # Extract duration from media type
+    if message.video and hasattr(message.video, 'duration'):
+        duration = message.video.duration
+    elif message.audio and hasattr(message.audio, 'duration'):
+        duration = message.audio.duration
+    
+    # Don't trust duration if it's too small (< 60 seconds)
+    # Telegram sometimes reports 0 or 1 second on first upload
+    if duration and duration < 60:
+        logger.warning(f"Ignoring unreliable duration: {duration}s (file size: {humanbytes(file_size)})")
+        duration = None
+    
+    # Additional validation: if file is large (> 10MB), duration should exist
+    # If it doesn't or is too small, it's unreliable
+    if file_size > 10 * 1024 * 1024:  # 10MB
+        if not duration or duration < 60:
+            logger.warning(f"Large file ({humanbytes(file_size)}) with suspicious duration, treating as unreliable")
+            duration = None
+    
+    if duration:
+        logger.info(f"Using reliable duration: {duration}s for file size: {humanbytes(file_size)}")
+    else:
+        logger.info(f"No reliable duration available, using file_size ({humanbytes(file_size)}) as primary indicator")
+    
+    return duration
 
 async def add_metadata(input_path, output_path, user_id):
     """Add metadata to media file using ffmpeg"""
@@ -193,6 +234,13 @@ async def auto_rename_files(client, message):
         media_type = "audio"
     else:
         return await message.reply_text("Unsupported file type")
+
+    reliable_duration = get_reliable_duration(message, file_size)
+    
+    # Log file information for debugging
+    logger.info(f"Processing file: {file_name}")
+    logger.info(f"File size: {humanbytes(file_size)}")
+    logger.info(f"Reliable duration: {reliable_duration}s" if reliable_duration else "Duration: unreliable/not available")
 
     # Prevent duplicate processing
     if file_id in renaming_operations:
