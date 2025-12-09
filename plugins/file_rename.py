@@ -43,28 +43,17 @@ SEASON_EPISODE_PATTERNS = [
 ]
 
 QUALITY_PATTERNS = [
-    # Bracketed formats first priority: [480p], [720p], [1080p]
-    (re.compile(r'\[(\d{3,4}[pi])\]', re.IGNORECASE),
-        lambda m: m.group(1).lower()),
-
-    # Standard formats: 480p, 720p, 1080p
-    (re.compile(r'\b(\d{3,4}[pi])\b', re.IGNORECASE),
-        lambda m: m.group(1).lower()),
-
-    # 4K / 2K formats
-    (re.compile(r'\[?(4k|2160p|uhd)\]?', re.IGNORECASE),
-        lambda m: "4k"),
-
-    (re.compile(r'\[?(2k|1440p|qhd)\]?', re.IGNORECASE),
-        lambda m: "2k"),
-
-    # HDRip / HDTV / WebRip
-    (re.compile(r'\[?(HDRip|HDTV|WebRip|WEBRip|BluRay|BRRip)\]?', re.IGNORECASE),
-        lambda m: m.group(1).lower()),
-
-    # x264/x265 variants
-    (re.compile(r'\[?(\d{3,4}p)?\s*[xX](264|265)\]?', re.IGNORECASE),
-        lambda m: m.group(0).lower()),
+    # Bracketed quality formats (PRIORITY) - [480p], [720p], [1080p], [2160p]
+    (re.compile(r'\[(\d{3,4}[pi])\]', re.IGNORECASE), lambda m: m.group(1).lower()),
+    # Standard quality formats - 1080p, 720p, 480p, 2160p
+    (re.compile(r'\b(\d{3,4}[pi])\b', re.IGNORECASE), lambda m: m.group(1).lower()),
+    # 4K and 2K variants - [4K], 4K, [2160p], 2160p
+    (re.compile(r'\[?(4k|2160p|uhd)\]?', re.IGNORECASE), lambda m: "4k"),
+    (re.compile(r'\[?(2k|1440p|qhd)\]?', re.IGNORECASE), lambda m: "2k"),
+    # HDRip, HDTV, WebRip variants - [HDRip], HDRip
+    (re.compile(r'\[?(HDRip|HDTV|WebRip|WEBRip|BluRay|BRRip)\]?', re.IGNORECASE), lambda m: m.group(1).lower()),
+    # x264/x265 variants with quality
+    (re.compile(r'\[?(4k|2k|1080p|720p|480p)?\s*[xX](264|265)\]?', re.IGNORECASE), lambda m: m.group(0).lower()),
 ]
 
 def extract_season_episode(caption, filename):
@@ -259,6 +248,10 @@ async def auto_rename_files(client, message):
             return
     renaming_operations[file_id] = datetime.now()
 
+    download_path = None
+    metadata_path = None
+    thumb_path = None
+
     try:
         caption = message.caption if message.caption else None
         
@@ -297,6 +290,13 @@ async def auto_rename_files(client, message):
                 progress=progress_for_pyrogram,
                 progress_args=("Downloading...", msg, time.time())
             )
+        except FloodWait as e:
+            logger.warning(f"FloodWait: Sleeping for {e.value} seconds")
+            await asyncio.sleep(e.value)
+            file_path = await client.download_media(message, file_name=download_path)
+        except TimeoutError:
+            await msg.edit("**Download timeout. Please try again.**")
+            raise
         except Exception as e:
             await msg.edit(f"Download failed: {e}")
             raise
@@ -307,8 +307,9 @@ async def auto_rename_files(client, message):
             await add_metadata(file_path, metadata_path, user_id)
             file_path = metadata_path
         except Exception as e:
-            await msg.edit(f"Metadata processing failed: {e}")
-            raise
+            logger.warning(f"Metadata processing failed, using original file: {e}")
+            # Continue without metadata if processing fails
+            file_path = download_path
 
         # Prepare for upload
         await msg.edit("**Preparing upload...**")
@@ -318,39 +319,76 @@ async def auto_rename_files(client, message):
 
         # Handle thumbnail
         if thumb:
-            thumb_path = await client.download_media(thumb)
+            try:
+                thumb_path = await client.download_media(thumb)
+            except Exception as e:
+                logger.warning(f"Failed to download custom thumbnail: {e}")
         elif media_type == "video" and message.video.thumbs:
-            thumb_path = await client.download_media(message.video.thumbs[0].file_id)
+            try:
+                thumb_path = await client.download_media(message.video.thumbs[0].file_id)
+            except Exception as e:
+                logger.warning(f"Failed to download video thumbnail: {e}")
         
         thumb_path = await process_thumbnail(thumb_path)
 
-        # Upload file
         await msg.edit("**Uploading...**")
-        try:
-            upload_params = {
-                'chat_id': message.chat.id,
-                'caption': caption,
-                'thumb': thumb_path,
-                'progress': progress_for_pyrogram,
-                'progress_args': ("Uploading...", msg, time.time())
-            }
+        max_retries = 3
+        retry_count = 0
+        
+        while retry_count < max_retries:
+            try:
+                upload_params = {
+                    'chat_id': message.chat.id,
+                    'caption': caption,
+                    'thumb': thumb_path,
+                    'progress': progress_for_pyrogram,
+                    'progress_args': ("Uploading...", msg, time.time())
+                }
 
-            if media_type == "document":
-                await client.send_document(document=file_path, **upload_params)
-            elif media_type == "video":
-                await client.send_video(video=file_path, **upload_params)
-            elif media_type == "audio":
-                await client.send_audio(audio=file_path, **upload_params)
+                if media_type == "document":
+                    await client.send_document(document=file_path, **upload_params)
+                elif media_type == "video":
+                    await client.send_video(video=file_path, **upload_params)
+                elif media_type == "audio":
+                    await client.send_audio(audio=file_path, **upload_params)
 
-            await msg.delete()
-        except Exception as e:
-            await msg.edit(f"Upload failed: {e}")
-            raise
+                await msg.delete()
+                break  # Success - exit retry loop
+                
+            except FloodWait as e:
+                logger.warning(f"FloodWait during upload: Sleeping for {e.value} seconds")
+                await msg.edit(f"**Rate limited. Waiting {e.value} seconds...**")
+                await asyncio.sleep(e.value)
+                retry_count += 1
+                
+            except TimeoutError:
+                retry_count += 1
+                if retry_count < max_retries:
+                    logger.warning(f"Upload timeout. Retry {retry_count}/{max_retries}")
+                    await msg.edit(f"**Upload timeout. Retrying ({retry_count}/{max_retries})...**")
+                    await asyncio.sleep(5)
+                else:
+                    await msg.edit("**Upload failed after multiple retries. Please try again later.**")
+                    raise
+                    
+            except Exception as e:
+                logger.error(f"Upload error: {e}")
+                retry_count += 1
+                if retry_count < max_retries:
+                    await msg.edit(f"**Upload error. Retrying ({retry_count}/{max_retries})...**")
+                    await asyncio.sleep(3)
+                else:
+                    await msg.edit(f"Upload failed: {e}")
+                    raise
 
     except Exception as e:
         logger.error(f"Processing error: {e}")
-        await message.reply_text(f"Error: {str(e)}")
+        try:
+            await message.reply_text(f"Error: {str(e)}")
+        except:
+            pass
     finally:
         # Clean up files
         await cleanup_files(download_path, metadata_path, thumb_path)
         renaming_operations.pop(file_id, None)
+        
