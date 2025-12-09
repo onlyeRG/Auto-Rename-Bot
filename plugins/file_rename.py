@@ -43,17 +43,28 @@ SEASON_EPISODE_PATTERNS = [
 ]
 
 QUALITY_PATTERNS = [
-    # Bracketed quality formats (PRIORITY) - [480p], [720p], [1080p], [2160p]
-    (re.compile(r'\[(\d{3,4}[pi])\]', re.IGNORECASE), lambda m: m.group(1).upper()),
-    # Standard quality formats - 1080p, 720p, 480p, 2160p
-    (re.compile(r'\b(\d{3,4}[pi])\b', re.IGNORECASE), lambda m: m.group(1).upper()),
-    # 4K and 2K variants - [4K], 4K, [2160p], 2160p
-    (re.compile(r'\[?(4k|2160p|uhd)\]?', re.IGNORECASE), lambda m: "4K"),
-    (re.compile(r'\[?(2k|1440p|qhd)\]?', re.IGNORECASE), lambda m: "2K"),
-    # HDRip, HDTV, WebRip variants - [HDRip], HDRip
-    (re.compile(r'\[?(HDRip|HDTV|WebRip|WEBRip|BluRay|BRRip)\]?', re.IGNORECASE), lambda m: m.group(1).upper()),
-    # x264/x265 variants with quality
-    (re.compile(r'\[?(4k|2k|1080p|720p|480p)?\s*[xX](264|265)\]?', re.IGNORECASE), lambda m: m.group(0).upper()),
+    # Bracketed formats first priority: [480p], [720p], [1080p]
+    (re.compile(r'\[(\d{3,4}[pi])\]', re.IGNORECASE),
+        lambda m: m.group(1).lower()),
+
+    # Standard formats: 480p, 720p, 1080p
+    (re.compile(r'\b(\d{3,4}[pi])\b', re.IGNORECASE),
+        lambda m: m.group(1).lower()),
+
+    # 4K / 2K formats
+    (re.compile(r'\[?(4k|2160p|uhd)\]?', re.IGNORECASE),
+        lambda m: "4k"),
+
+    (re.compile(r'\[?(2k|1440p|qhd)\]?', re.IGNORECASE),
+        lambda m: "2k"),
+
+    # HDRip / HDTV / WebRip
+    (re.compile(r'\[?(HDRip|HDTV|WebRip|WEBRip|BluRay|BRRip)\]?', re.IGNORECASE),
+        lambda m: m.group(1).lower()),
+
+    # x264/x265 variants
+    (re.compile(r'\[?(\d{3,4}p)?\s*[xX](264|265)\]?', re.IGNORECASE),
+        lambda m: m.group(0).lower()),
 ]
 
 def extract_season_episode(caption, filename):
