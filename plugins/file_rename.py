@@ -391,4 +391,3 @@ async def auto_rename_files(client, message):
         # Clean up files
         await cleanup_files(download_path, metadata_path, thumb_path)
         renaming_operations.pop(file_id, None)
-        
