@@ -11,7 +11,6 @@ from pyrogram.errors import FloodWait
 from pyrogram.types import InputMediaDocument, Message
 from hachoir.metadata import extractMetadata
 from hachoir.parser import createParser
-from plugins.antinsfw import check_anti_nsfw
 from helper.utils import progress_for_pyrogram, humanbytes, convert
 from helper.database import codeflixbots
 from config import Config
@@ -119,7 +118,7 @@ async def process_thumbnail(thumb_path):
     
     try:
         with Image.open(thumb_path) as img:
-            img = img.convert("RGB").resize((1280, 720))
+            img = img.convert("RGB").resize((2560, 1440))
             img.save(thumb_path, "JPEG")
         return thumb_path
     except Exception as e:
@@ -194,10 +193,6 @@ async def auto_rename_files(client, message):
         media_type = "audio"
     else:
         return await message.reply_text("Unsupported file type")
-
-    # NSFW check
-    if await check_anti_nsfw(file_name, message):
-        return await message.reply_text("NSFW content detected")
 
     # Prevent duplicate processing
     if file_id in renaming_operations:
