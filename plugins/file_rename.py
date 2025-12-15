@@ -207,6 +207,49 @@ async def add_metadata(input_path, output_path, user_id):
     if process.returncode != 0:
         raise RuntimeError(f"FFmpeg error: {stderr.decode()}")
 
+async def get_video_duration(file_path):
+    """
+    Extract actual duration from video file using ffprobe.
+    Returns duration in seconds as integer, or None if extraction fails.
+    """
+    ffprobe = shutil.which('ffprobe')
+    if not ffprobe:
+        logger.warning("ffprobe not found in PATH, duration extraction skipped")
+        return None
+    
+    try:
+        cmd = [
+            ffprobe,
+            '-v', 'error',
+            '-show_entries', 'format=duration',
+            '-of', 'default=noprint_wrappers=1:nokey=1',
+            file_path
+        ]
+        
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
+        
+        if process.returncode != 0:
+            logger.error(f"ffprobe error: {stderr.decode()}")
+            return None
+        
+        duration_str = stdout.decode().strip()
+        if duration_str:
+            duration = int(float(duration_str))
+            logger.info(f"Extracted duration from file: {duration}s ({duration // 60}:{duration % 60:02d})")
+            return duration
+        else:
+            logger.warning("ffprobe returned empty duration")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Failed to extract duration: {e}")
+        return None
+
 @Client.on_message(filters.private & (filters.document | filters.video | filters.audio))
 async def auto_rename_files(client, message):
     """Main handler for auto-renaming files"""
@@ -331,6 +374,12 @@ async def auto_rename_files(client, message):
         
         thumb_path = await process_thumbnail(thumb_path)
 
+        video_duration = await get_video_duration(file_path)
+        if video_duration:
+            logger.info(f"Using extracted duration: {video_duration}s for upload")
+        else:
+            logger.warning("Duration extraction failed, uploading without duration metadata")
+
         await msg.edit("**Uploading...**")
         max_retries = 3
         retry_count = 0
@@ -348,6 +397,7 @@ async def auto_rename_files(client, message):
                 await client.send_video(
                     video=file_path, 
                     supports_streaming=True,
+                    duration=video_duration,  # Pass extracted duration
                     **upload_params
                 )
 
@@ -390,4 +440,3 @@ async def auto_rename_files(client, message):
         # Clean up files
         await cleanup_files(download_path, metadata_path, thumb_path)
         renaming_operations.pop(file_id, None)
-        
